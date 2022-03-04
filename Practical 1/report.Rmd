@@ -1,0 +1,289 @@
+---
+title: "Practical 1"
+author: "Termont Didier"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment=NA)
+
+options(digits = 3)
+```
+
+## Exercise 1 : Use of the Bayes formula
+We have two event set to study:
+
+- A = the student has well studied
+- B = the correct response is selected by the student
+
+With the information from the exercise, we know that:
+
+- $P(A) = p$
+- $P(B|A) = 1$
+- $P(B|\bar{A}) = \frac{1}{5}$
+
+From the total sum rule we can compute P(B):
+$P(B) = P(B|A)P(A) + P(B|\bar{A})P(\bar{A})$
+
+With the known information we have:
+$P(B) = p + \frac{1}{5} (1-p)$
+
+Now, by using Bayes theorem we compute P(A|B)
+
+> $P(A|B) = \frac{P(B|A) P(A)}{P(B)}$
+>
+> $P(A|B) = \frac{p}{p+ \frac{1}{5}(1-p)} = \frac{5 p}{4p+1}$
+
+
+## Exercise 2: use of the Bayes formula
+
+event A: 
+
+- we buy 5 stocks and we observe that 3 of them has the price that rise
+- we assume that the probability to rise is 0.8 if the manager is well informed :$(A|B) \sim Bin(n=5,p=0.8)$
+- if it is not well informed, this probability is 0.5: $(A|\bar{B}) \sim Bin(n=5,p=0.5)$
+
+event B:
+
+- the manager is not well informed
+- assumption that 30% of the manager are well informed $\rightarrow P(\bar{B})=0.3$
+
+The question we ask is to know if the manager is well informed if we know that 3 out of the 5 stocks rise.
+For that we have to compute the conditional probability $P(\bar{B}|A)$
+With the Bayes theorem, we know that:
+$$P(\bar{B}|A) = \frac{P(A|\bar{B}) P(\bar{B})}{P(A)}$$
+
+The total probability sum help us to compute $P(A)=P(A|B) P(B) + P(A|\bar{B}) P(\bar{B})$ with:
+
+- $P(B) = 0.7$
+- $P(\bar{B}) = 0.3$
+- $P(A|B) = C_5^3 0.5^3 (1-0.5)^2 = `r dbinom(3,5,0.5)`$
+- $P(A|\bar{B}) = C_5^3 0.8^3 (1-0.8)^2 = `r dbinom(3,5,0.8)`$
+
+Putting it all together:
+```{r}
+a_b <- dbinom(3,5,0.5)
+a_bbar <- dbinom(3,5,0.8)
+b <- 0.7
+bbar <- 1-b
+
+bbar_a <- a_bbar * bbar / (a_bbar * bbar + a_b * b)
+```
+
+$$P(\bar{B}|A) = `r bbar_a`$$
+Knowing this, we can assume that the manager is ill informed.
+
+# Exercice 3 : estimation of a proportion
+
+```{r}
+p <- seq(from=0.05,to=0.95,by=0.1)
+weight <- c(2,4,8,8,4,2,1,1,1,1)
+```
+
+
+## Discrete prior
+
+### Prior for all possible value of p
+The probability for each value of $p$ is the normalized weight. This information is presented in the next table
+```{r}
+prior<-weight/sum(weight)
+t(data.frame(p=p,weight=weight,prior=prior)) |> 
+  kableExtra::kbl(booktabs = TRUE) |> 
+  kableExtra::kable_styling(latex_options = "hold") |>
+  kableExtra::kable_classic()
+```
+
+### Definition of the likelihood
+the likelihood is given by the number of students that slept more than 8 hours knowing that the condition of the prior is true. In our case this can be summarized as $(X|p=p_0) \sim Bin(n=27,p=p_0)$
+Then we can write for the likelihood $$P(X=x|p) \propto p^x (1-p)^{n-x}$$
+
+### Posterior probability
+We know that the posterior probability is given by: 
+$$P(p=p_0|X=11)=\frac{P(X=11|p=p_0) P(p=p_0)}{P(X=11)}$$
+Based on this we can compute this propbability for different value of $p_0$
+```{r}
+likelihood <- dbinom(11,27,prob=p)
+prop <- likelihood*prior
+posterior <- data.frame(p0=p,prior=prior,likelihood=likelihood,proportion=prop,posterior=prop/sum(prop))
+posterior |> 
+  kableExtra::kbl(booktabs = TRUE) |> 
+  kableExtra::kable_styling(latex_options = "hold") |>
+  kableExtra::kable_classic()
+```
+
+And a plot for the posterior gives
+```{r, fig.align='center'}
+barplot(posterior~p0,data=posterior,xlab="p",ylab="posterior",col="green")
+```
+
+### Posterior probability for p < 0.5
+We compute this probability by summing all posterior probabilities when p < 0.5. This gives 
+`r sum(subset(posterior,p<0.5)$posterior)*100` %
+
+
+## Continuous prior
+
+### The posterior distribution
+in this case, we have the prior distribution following a beta distribution $p \sim Beta(a=3,b=7)$
+The likelihood remains the same: $(X|p) \sim Bin(27,p)$
+
+This implies that the posterior should be of the form:
+$P(p=p_0|X=11) \propto p_0^{11} (1-p_0)^{16} p_0^2 (1-p_0)^6 = p_0^{13} (1-p_0)^{22}$
+
+From this form we can say that the posterior follows also a beta distribution: $(p|X=11) \sim Beta(a=14,b=23)$
+Here is a plot of this distribution
+```{r, fig.align='center'}
+curve(dbeta(x,14,23),from=0,to=1,xlab ="p",ylab="%")
+```
+
+### Posterior probability that p > 0.5
+this is compute by the integral of the Beta distribution:
+```{r, echo=TRUE}
+integrate(function (x) {dbeta(x,shape1=14,shape2=23)},lower=0.5,upper = 1)$value
+```
+
+### Monte-Carlo
+We start by creating a first sample of 10000 trial from the posterior:
+```{r}
+mc_sample <- rbeta(10000,14,23)
+```
+
+- The mean of the sample is **`r mean(mc_sample)`**
+- The median is **`r median(mc_sample)`**
+- The variance is **`r var(mc_sample)`**
+- The 2.5% and 97,5% quantiles: 
+```{r} 
+t(quantile(mc_sample,probs=c(0.025,0.975))) |>
+  kableExtra::kbl(booktabs = T) |>
+  kableExtra::kable_styling(latex_options = "hold") |>
+  kableExtra::kable_classic()
+```
+
+### Laplace approximation
+To compute the Lapace approximation for a _Beta_ distribution, we need first to compute the mode:
+$$Mode(\theta)=\hat{\theta}=\frac{a-1}{a+b-2} = \frac{14-1}{14+23-2} = `r 13/35`$$
+Then we can say that $Beta(14,23) \simeq N(\hat{\theta},\frac{\hat{\theta} (1-\hat{\theta})}{14+23-2}) \simeq N(`r 13/35`,`r  13/35 * (1-13/35)/ 35`)$
+```{r, fig.align='center'}
+mode <- 13/35
+v <- mode * (1-mode)/(14+23-2)
+curve(dbeta(x,14,23), from=0,to=1,xlab = "p",ylab="%",main = "Beta dist. vs. Laplace approximation")
+curve(dnorm(x,mode,sqrt(v)),add=TRUE,col="red")
+legend("topright",legend = c("beta(14,23)","laplace app."), col = c("black","red"),lty=1:2,cex=0.8)
+```
+
+# Exercice 4 : comparison of two propotions
+
+We want to study the ratio of fatal accidents over all accidents
+
+## Prior
+since we have no idea of the real proportion in any cases, we will assume a uniform distribution for the proportions:
+
+> $p_{i} \sim U(0,1)$
+
+## Likelihood
+We know that the number of fatal accidents will follow a Binomial distribution. In the likelihood we assume that the proportion is known
+
+> $(y_{i}|p_{i}) \sim Bin(n_{i},p_{i})$
+
+
+## Posterior
+
+We have from Bayes theorem that $posterior \propto likelihood \times prior$
+If we apply this to our case:
+$P(p_{i}|Y=y_{i}) \propto p_{i}^{y_{i}} (1-p_i)^{n_i-y_i} \times 1$
+
+We can then summarize this as $(p_i|y_i) \sim Beta(y_i+1,n_i-y_i+1)$
+
+## 95% Credible interval
+We will compute the credible intervales based on the quantiles for the Beta distribution
+For the case of 'no seatble' we  will compute the quantiles for $Beta(1601+1,162527+1)$
+```{r, echo=TRUE}
+sample_no <- rbeta(10000,1601+1,162527+1)
+quantile(sample_no,probs=c(0.025,0.975))
+```
+
+The same approach is taken for case of 'with seatble'. We compute the quantiles for the distribution of $Beta(510+1,412368+1)$
+```{r, echo=TRUE}
+sample_yes <- rbeta(10000,510+1,412368+1)
+quantile(sample_yes,probs=c(0.025,0.975))
+```
+
+## Odd ratio analisys
+The odd ratio is compute with the followinf formula $\lambda = \frac{p_{no}/((1-p_{no})}{p_{yes}/(1-p_{yes})}$
+```{r, echo=TRUE,fig.align='center'}
+odd_ratio <- (sample_no/(1-sample_no))/(sample_yes/(1-sample_yes))
+hist(odd_ratio)
+```
+
+The 95% credible interval for the odd ratio is
+```{r, echo=TRUE}
+quantile(odd_ratio,probs=c(0.025,0.975))
+```
+
+We can assimilate the odd ratio to a risk ratio because the proportions are small enough
+Based on this analisys, we can say that the risk of having a fatal accident is 7 time higher if you do not have your seatbelt is false. 7 is not in the credible interval. 8 times should be more accurated
+
+
+
+## Difference ratio analisys
+The difference of the ratio is given by the formula $\delta = p_{no} - p_{yes}$
+```{r,echo=TRUE,fig.align='center'}
+dif_ratio <- sample_no-sample_yes
+hist(dif_ratio)
+```
+
+The credible interval for this difference is
+```{r, echo=TRUE}
+quantile(dif_ratio,probs=c(0.025,0.975))
+```
+
+# Exercice 5 : Poisson distribution
+
+## Theorical section: the posterior distribution
+we define a prior for a variable $\lambda$ following a Gamma distribution. 
+
+> $P(\Lambda=\lambda) \propto (\lambda)^{a-1}exp(-\lambda b)$
+
+The likelihood is then given by a Poisson distribution  with parameter given by $\lambda \tau$ 
+
+> $P(X=x|\lambda) \propto (\lambda \tau)^x exp(-\lambda \tau)$
+
+So we have the posterior that should be given by 
+
+> $P(\lambda|X=x) \propto (\lambda)^{a-1}exp(-\lambda b) \times \lambda^x exp(-\lambda \tau)$
+
+let's notice that the $\tau^x$ is now part of the proportional constant
+
+After simplification, the posterior becomes 
+
+> $P(\lambda|X=x) \propto \lambda^{a+x-1}exp(-\lambda (b+\tau))$
+
+We can say that the posterior distribution continues to follow a gamma distribution
+
+> $(\lambda|x) \sim Gamma(a+x,b + \tau)$
+
+## simulation of the ratio for the sales
+
+We first create to samples to estimate the two parameters $\lambda_1, \lambda_2$
+```{r, echo =TRUE,fig.align='center'}
+lambda1_sample <- rgamma(10000,20+260,0.5+4)
+lambda2_sample <- rgamma(10000,40+165,1+4)
+
+ratio <- lambda1_sample/lambda2_sample
+
+hist(ratio)
+```
+
+The 95% credible interval based on the quantiles is :
+```{r}
+quantile(ratio,prob=c(0.025,0.975))
+```
+
+And the average of the ratio is `r mean(ratio)`
+
+With this we can conclude that 1.5 (50% increase of the sales in the first region) of the ratio is in the credible interval.
+Based on the ratio sample we can compute a probability that the ratio is over 1.5: $P(ration1.5) = `r length(subset(ratio,ratio>1.5))/100` \%$
+
